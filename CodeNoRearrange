@@ -1,0 +1,230 @@
+import yt
+import numpy as np
+from numpy import linalg as la
+from yt import derived_field
+from yt.analysis_modules.level_sets.api import *
+ds = yt.load("data/RD0002/RedshiftOutput0002")
+surface = ds.all_data()
+rho = surface.quantities["WeightedAverageQuantity"]("density",weight="ones")
+vertices = surface.extract_isocontours("density", rho, "triangles.obj", True)
+grid = ds.arbitrary_grid([0,0,0],[.2,.2,.2], dims=ds.domain_dimensions)
+master_clump = Clump(surface, ('gas', 'density'))
+grad_density = ds.add_gradient_fields(("gas", "density"))
+opacity_0 = 1
+a = 1
+b = 1
+c = 1
+d = 1
+def _grad_density_norm(field, data):
+    grad_density_norm = data["density_gradient_magnitude"]
+    return grad_density_norm
+ds.add_field(("gas", "graddensitynorm"), function=_grad_density_norm, units="g/cm**4", take_log=False, display_name="grad_density_norm")
+def _opacity(field, data):
+    return (opacity_0)*data["density"]/(data["temperature"]**3.5)
+ds.add_field(("gas", "opacity"), function=_opacity, units="", take_log=False, display_name="opacity")
+def _bubble_limit(field, data):
+    return data["opacity"]*data["density"]**2/data["graddensitynorm"]
+ds.add_field(("gas", "bubble limit"), function=_bubble_limit, units="", take_log=False, display_name = "bubble limit")
+def _photon_bubble_constraint(clump, _bubble_limit):
+    return (clump["gas", "bubble limit"] > 1)
+def _particle_velocity_norm(field, data):
+    return np.sqrt(data["particle_velocity_x"]**2 + data["particle_velocity_y"]**2 + data["particle_velocity_z"]**2)
+ds.add_field(("gas", "particle_velocity_norm"), function = _particle_velocity_norm, units="cm/s", take_log=False, display_name="particle_velocity_norm")
+#add_validator("photon_bubble_constraint", _photon_bubble_constraint)
+#master_clump.add_validator("photon_bubble_constraint", _photon_bubble_constraint)
+master_clump.add_info_item("total_cells")
+master_clump.add_info_item("center_of_mass")
+def M1(clump):
+    return a*clump.data.sum("cell_volume")
+def M2(clump):
+    position_mag = []
+    position = clump["all", "particle_position"]
+    for x in position:
+        position_mag.append(la.norm(x))
+    max_index = position_mag.index(max(position_mag))
+    min_index = position_mag.index(min(position_mag))
+    max_position = position[max_index].in_units("Mpc")
+    min_position = position[min_index].in_units("Mpc")
+    clump_box = ds.box(min_position, max_position)
+    clump_rho = clump_box.quantities["WeightedAverageQuantity"]("density",weight="ones")
+    clump_vertices = clump_box.extract_isocontours("density", clump_rho, "clumptriangles.obj", True)
+    midpoints = (clump_vertices[::3,:] + clump_vertices[1::3,:] + clump_vertices[2::3,:])/3
+    side_1 = clump_vertices[1::3,:] - clump_vertices[::3,:]
+    side_2 = clump_vertices[2::3,:] - clump_vertices[::3,:]
+    triangle_area = []
+    for i in range(len(side_1)):
+        triangle_area.append(.5*la.norm(np.cross(side_1[i], side_2[i])))
+    return b*np.sum(triangle_area)
+def M3_Gauss(clump):
+    position_mag = []
+    position = clump["all", "particle_position"]
+    for x in position:
+        position_mag.append(la.norm(x))
+    max_index = position_mag.index(max(position_mag))
+    min_index = position_mag.index(min(position_mag))
+    max_position = position[max_index].in_units("Mpc")
+    min_position = position[min_index].in_units("Mpc")
+    clump_box = ds.box(min_position, max_position)
+    clump_rho = clump_box.quantities["WeightedAverageQuantity"]("density",weight="ones")
+    clump_vertices = clump_box.extract_isocontours("density", clump_rho, "clumptriangles.obj", True)
+    midpoints = (clump_vertices[::3,:] + clump_vertices[1::3,:] + clump_vertices[2::3,:])/3
+    tangent_vectors = clump_vertices[::3,:] - midpoints
+    tangent_vectors_1 = clump_vertices[1::3,:] - midpoints
+    tangent_vectors_2 = clump_vertices[2::3,:] - midpoints
+    normal_vectors = []
+    for i in range(len(tangent_vectors)-1):
+        normal_vectors.append(np.cross(tangent_vectors[i], tangent_vectors[i+1]))
+    normal_vectors.append(np.cross(tangent_vectors[len(tangent_vectors)-1], tangent_vectors[0]))
+    tangent_norm = []
+    tangent_norm_1 = []
+    tangent_norm_2 = []
+    for x in tangent_vectors:
+        tangent_norm.append(la.norm(x))
+    for x in tangent_vectors_1:
+        tangent_norm_1.append(la.norm(x))
+    for x in tangent_vectors_2:
+        tangent_norm_2.append(la.norm(x))
+    tangent_deriv = []
+    tangent_deriv_1 = []
+    tangent_deriv_2 = []
+    for i in range(len(tangent_vectors)-1):
+        tangent_deriv.append((tangent_vectors[i+1]-tangent_vectors[i])/(la.norm(midpoints[i+1] - midpoints[i])))
+        tangent_deriv_1.append((tangent_vectors_1[i+1]-tangent_vectors_1[i])/(la.norm(midpoints[i+1] - midpoints[i])))
+        tangent_deriv_2.append((tangent_vectors_2[i+1]-tangent_vectors_2[i])/(la.norm(midpoints[i+1] - midpoints[i])))
+    tangent_deriv.append((tangent_vectors[len(tangent_vectors)-1]-tangent_vectors[0])/(la.norm(midpoints[len(tangent_vectors)-1] - midpoints[0])))
+    tangent_deriv_1.append((tangent_vectors_1[len(tangent_vectors_1)-1]-tangent_vectors_1[0])/(la.norm(midpoints[len(tangent_vectors_1)-1] - midpoints[0])))
+    tangent_deriv_2.append((tangent_vectors_2[len(tangent_vectors_2)-1]-tangent_vectors_2[0])/(la.norm(midpoints[len(tangent_vectors_2)-1] - midpoints[0])))
+    tangent_deriv_norm = []
+    tangent_deriv_norm_1 = []
+    tangent_deriv_norm_2 = []
+    for x in tangent_deriv:
+        tangent_deriv_norm.append(la.norm(x))
+    for x in tangent_deriv_1:
+        tangent_deriv_norm_1.append(la.norm(x))
+    for x in tangent_deriv_2:
+        tangent_deriv_norm_2.append(la.norm(x))
+    normal_deriv = []
+    for i in range(len(normal_vectors)-1):
+        normal_deriv.append((normal_vectors[i+1] - normal_vectors[i])/(la.norm(midpoints[i+1] - midpoints[i])))
+    normal_deriv.append((normal_vectors[len(normal_vectors)-1] - normal_vectors[0])/(la.norm(midpoints[len(normal_vectors)-1] - midpoints[0])))
+    curvature_pr = []
+    curvature_pr_1 = []
+    curvature_pr_2= []
+    for i in range(len(tangent_deriv_norm)):
+        curvature_pr.append(np.dot(tangent_deriv[i], normal_deriv[i])/(tangent_deriv_norm[i])**2)
+        curvature_pr_1.append(np.dot(tangent_deriv_1[i], normal_deriv[i])/(tangent_deriv_norm_1[i])**2)
+        curvature_pr_2.append(np.dot(tangent_deriv_2[i], normal_deriv[i])/(tangent_deriv_norm_2[i])**2)
+    curvature_array = np.array((curvature_pr, curvature_pr_1, curvature_pr_2))
+    curvature_array_T = np.transpose(curvature_array)
+    curvature_max = []
+    curvature_min = []
+    for row in curvature_array_T:
+        curvature_max.append(np.amax(row, axis = 0))
+        curvature_min.append(np.amin(row, axis = 0))
+    curvature_gauss = []
+    for i in range(len(curvature_max)):
+        curvature_gauss.append(curvature_max[i]*curvature_min[i])
+    return c*curvature_gauss
+def M3_Mean(clump):
+    position_mag = []
+    position = clump["all", "particle_position"]
+    for x in position:
+        position_mag.append(la.norm(x))
+    max_index = position_mag.index(max(position_mag))
+    min_index = position_mag.index(min(position_mag))
+    max_position = position[max_index].in_units("Mpc")
+    min_position = position[min_index].in_units("Mpc")
+    clump_box = ds.box(min_position, max_position)
+    clump_rho = clump_box.quantities["WeightedAverageQuantity"]("density",weight="ones")
+    clump_vertices = clump_box.extract_isocontours("density", clump_rho, "clumptriangles.obj", True)
+    midpoints = (clump_vertices[::3,:] + clump_vertices[1::3,:] + clump_vertices[2::3,:])/3
+    tangent_vectors = clump_vertices[::3,:] - midpoints
+    tangent_vectors_1 = clump_vertices[1::3,:] - midpoints
+    tangent_vectors_2 = clump_vertices[2::3,:] - midpoints
+    normal_vectors = []
+    for i in range(len(tangent_vectors)-1):
+        normal_vectors.append(np.cross(tangent_vectors[i], tangent_vectors[i+1]))
+    normal_vectors.append(np.cross(tangent_vectors[len(tangent_vectors)-1], tangent_vectors[0]))
+    tangent_norm = []
+    tangent_norm_1 = []
+    tangent_norm_2 = []
+    for x in tangent_vectors:
+        tangent_norm.append(la.norm(x))
+    for x in tangent_vectors_1:
+        tangent_norm_1.append(la.norm(x))
+    for x in tangent_vectors_2:
+        tangent_norm_2.append(la.norm(x))
+    tangent_deriv = []
+    tangent_deriv_1 = []
+    tangent_deriv_2 = []
+    for i in range(len(tangent_vectors)-1):
+        tangent_deriv.append((tangent_vectors[i+1]-tangent_vectors[i])/(la.norm(midpoints[i+1] - midpoints[i])))
+        tangent_deriv_1.append((tangent_vectors_1[i+1]-tangent_vectors_1[i])/(la.norm(midpoints[i+1] - midpoints[i])))
+        tangent_deriv_2.append((tangent_vectors_2[i+1]-tangent_vectors_2[i])/(la.norm(midpoints[i+1] - midpoints[i])))
+    tangent_deriv.append((tangent_vectors[len(tangent_vectors)-1]-tangent_vectors[0])/(la.norm(midpoints[len(tangent_vectors)-1] - midpoints[0])))
+    tangent_deriv_1.append((tangent_vectors_1[len(tangent_vectors_1)-1]-tangent_vectors_1[0])/(la.norm(midpoints[len(tangent_vectors_1)-1] - midpoints[0])))
+    tangent_deriv_2.append((tangent_vectors_2[len(tangent_vectors_2)-1]-tangent_vectors_2[0])/(la.norm(midpoints[len(tangent_vectors_2)-1] - midpoints[0])))
+    tangent_deriv_norm = []
+    tangent_deriv_norm_1 = []
+    tangent_deriv_norm_2 = []
+    for x in tangent_deriv:
+        tangent_deriv_norm.append(la.norm(x))
+    for x in tangent_deriv_1:
+        tangent_deriv_norm_1.append(la.norm(x))
+    for x in tangent_deriv_2:
+        tangent_deriv_norm_2.append(la.norm(x))
+    normal_deriv = []
+    for i in range(len(normal_vectors)-1):
+        normal_deriv.append((normal_vectors[i+1] - normal_vectors[i])/(la.norm(midpoints[i+1] - midpoints[i])))
+    normal_deriv.append((normal_vectors[len(normal_vectors)-1] - normal_vectors[0])/(la.norm(midpoints[len(normal_vectors)-1] - midpoints[0])))
+    curvature_pr = []
+    curvature_pr_1 = []
+    curvature_pr_2= []
+    for i in range(len(tangent_deriv_norm)):
+        curvature_pr.append(np.dot(tangent_deriv[i], normal_deriv[i])/(tangent_deriv_norm[i])**2)
+        curvature_pr_1.append(np.dot(tangent_deriv_1[i], normal_deriv[i])/(tangent_deriv_norm_1[i])**2)
+        curvature_pr_2.append(np.dot(tangent_deriv_2[i], normal_deriv[i])/(tangent_deriv_norm_2[i])**2)
+    curvature_array = np.array((curvature_pr, curvature_pr_1, curvature_pr_2))
+    curvature_array_T = np.transpose(curvature_array)
+    curvature_max = []
+    curvature_min = []
+    for row in curvature_array_T:
+        curvature_max.append(np.amax(row, axis = 0))
+        curvature_min.append(np.amin(row, axis = 0))
+    curvature_mean = []
+    for i in range(len(curvature_max)):
+        curvature_mean.append(.5*(curvature_max[i]+curvature_min[i]))
+    return c*curvature_mean
+def M4(clump):
+    position_mag = []
+    position = clump["all", "particle_position"]
+    for x in position:
+        position_mag.append(la.norm(x))
+    max_index = position_mag.index(max(position_mag))
+    min_index = position_mag.index(min(position_mag))
+    max_position = position[max_index].in_units("Mpc")
+    min_position = position[min_index].in_units("Mpc")
+    clump_box = ds.box(min_position, max_position)
+    clump_rho = clump_box.quantities["WeightedAverageQuantity"]("density",weight="ones")
+    clump_vertices = clump_box.extract_isocontours("density", clump_rho, "clumptriangles.obj", True)
+    midpoints = (clump_vertices[::3,:] + clump_vertices[1::3,:] + clump_vertices[2::3,:])/3
+    tangent_vectors = clump_vertices[::3,:] - midpoints
+    side_1 = clump_vertices[1::3,:] - clump_vertices[::3,:]
+    side_2 = clump_vertices[2::3,:] - clump_vertices[::3,:]
+    triangle_area = []
+    for i in range(len(tangent_vectors)):
+        triangle_area.append(.5*la.norm(np.cross(side_1[i], side_2[i])))
+    euler_list = []
+    for i in range(len(triangle_area)):
+        euler_list.append(float(((2*np.pi)**-1)*triangle_area[i]*M3_Gauss(clump)[i]))
+    return d*np.sum(euler_list)
+Minkowski_1 = open("Minkowski_1", "w")
+Minkowski_2 = open("Minkowski_2", "w")
+Minkowski_3 = open("Minkowski_3", "w")
+Minkowski_4 = open("Minkowski_4", "w")
+for clump in master_clump:
+    Minkowski_1.write(str(float(M1(clump))))
+    Minkowski_2.write(str(float(M2(clump))))
+    for i in range(10):
+        Minkowski_3.write(str(float(M3_Mean(clump)[i]))+" ")
+    Minkowski_4.write(str(float(M4(clump))))
