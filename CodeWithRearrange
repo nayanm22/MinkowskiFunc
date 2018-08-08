@@ -5,7 +5,7 @@ from numpy import linalg as la
 from yt import derived_field
 from yt.analysis_modules.level_sets.api import *
 ds = yt.load("data/RD0002/RedshiftOutput0002")
-surface = ds.all_data()
+surface = ds.box([0,0,0], [.2,.2,.2])
 rho = surface.quantities["WeightedAverageQuantity"]("density",weight="ones")
 vertices = surface.extract_isocontours("density", rho, "triangles.obj", True)
 grid = ds.arbitrary_grid([0,0,0],[.2,.2,.2], dims=ds.domain_dimensions)
@@ -63,7 +63,7 @@ def M2(clump):
     for i in range(len(side_1)):
         triangle_area.append(.5*la.norm(np.cross(side_1[i], side_2[i])))
     return b*np.sum(triangle_area)
-def M3_Gauss(clump):
+def Curv_Gauss(clump):
     position_mag = []
     position = clump["all", "particle_position"]
     for x in position:
@@ -160,8 +160,8 @@ def M3_Gauss(clump):
     curvature_gauss = []
     for i in range(len(curvature_max)):
         curvature_gauss.append(curvature_max[i]*curvature_min[i])
-    return c*curvature_gauss
-def M3_Mean(clump):
+    return curvature_gauss
+def Curv_Mean(clump):
     position_mag = []
     position = clump["all", "particle_position"]
     for x in position:
@@ -258,7 +258,58 @@ def M3_Mean(clump):
     curvature_mean = []
     for i in range(len(curvature_max)):
         curvature_mean.append(.5*(curvature_max[i]+curvature_min[i]))
-    return c*curvature_mean
+    return curvature_mean
+def M3(clump):
+    position_mag = []
+    position = clump["all", "particle_position"]
+    for x in position:
+        position_mag.append(la.norm(x))
+    max_index = position_mag.index(max(position_mag))
+    min_index = position_mag.index(min(position_mag))
+    max_position = position[max_index].in_units("Mpc")
+    min_position = position[min_index].in_units("Mpc")
+    clump_box = ds.box(min_position, max_position)
+    clump_rho = clump_box.quantities["WeightedAverageQuantity"]("density",weight="ones")
+    array = clump_box.extract_isocontours("density", clump_rho, "clumptriangles.obj", True)
+    array_dummy = []
+    array_n = []
+    while_count = int(len(array))
+    array_n.append(array[0])
+    array = np.delete(array, (0), axis = 0)
+    count = 0
+    while len(array_n) < while_count:
+        for row in array:
+            if d(row, array_n[count]) == True:
+                array_dummy.append(row)
+        if len(array_dummy) != 0:
+            row_choice = random.choice(array_dummy)
+            array_n.append(row_choice)
+            row_n = 0
+            for row in array:
+                if set(row) == set(row_choice):
+                    break
+                else:
+                    row_n = row_n+1
+            array = np.delete(array, (row_n), axis=0)
+            array_dummy.clear()
+            count = count+1
+        else:
+            break
+    if len(array) > 0:
+        for row in array:
+            array_n.append(row)
+    clump_vertices = np.array(array_n)
+    midpoints = (clump_vertices[::3,:] + clump_vertices[1::3,:] + clump_vertices[2::3,:])/3
+    tangent_vectors = clump_vertices[::3,:] - midpoints
+    side_1 = clump_vertices[1::3,:] - clump_vertices[::3,:]
+    side_2 = clump_vertices[2::3,:] - clump_vertices[::3,:]
+    triangle_area = []
+    for i in range(len(tangent_vectors)):
+        triangle_area.append(.5*la.norm(np.cross(side_1[i], side_2[i])))
+    euler_list = []
+    for i in range(len(triangle_area)):
+        euler_list.append(float(((2*np.pi)**-1)*triangle_area[i]*Curv_Mean(clump)[i]))
+    return c*np.sum(euler_list)
 def M4(clump):
     position_mag = []
     position = clump["all", "particle_position"]
@@ -308,7 +359,7 @@ def M4(clump):
         triangle_area.append(.5*la.norm(np.cross(side_1[i], side_2[i])))
     euler_list = []
     for i in range(len(triangle_area)):
-        euler_list.append(float(((2*np.pi)**-1)*triangle_area[i]*M3_Gauss(clump)[i]))
+        euler_list.append(float(((2*np.pi)**-1)*triangle_area[i]*Curv_Gauss(clump)[i]))
     return d*np.sum(euler_list)
 Minkowski_1 = open("Minkowski_1", "w")
 Minkowski_2 = open("Minkowski_2", "w")
@@ -317,6 +368,5 @@ Minkowski_4 = open("Minkowski_4", "w")
 for clump in master_clump:
     Minkowski_1.write(str(float(M1(clump))))
     Minkowski_2.write(str(float(M2(clump))))
-    for i in range(10):
-        Minkowski_3.write(str(float(M3_Mean(clump)[i]))+" ")
+    Minkowski_3.write(str(float(M3(clump))))
     Minkowski_4.write(str(float(M4(clump))))
