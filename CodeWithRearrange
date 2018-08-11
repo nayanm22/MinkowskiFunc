@@ -49,8 +49,8 @@ def M2(clump):
     position = clump["all", "particle_position"]
     for x in position:
         position_mag.append(la.norm(x))
-    max_index = position_mag.index(max(position_mag))
-    min_index = position_mag.index(min(position_mag))
+    max_index = position_mag.index(np.amax(position_mag, axis = 0))
+    min_index = position_mag.index(np.amin(position_mag, axis = 0))
     max_position = position[max_index].in_units("Mpc")
     min_position = position[min_index].in_units("Mpc")
     clump_box = ds.box(min_position, max_position)
@@ -68,8 +68,8 @@ def Curv_Gauss(clump):
     position = clump["all", "particle_position"]
     for x in position:
         position_mag.append(la.norm(x))
-    max_index = position_mag.index(max(position_mag))
-    min_index = position_mag.index(min(position_mag))
+    max_index = position_mag.index(np.amax(position_mag, axis = 0))
+    min_index = position_mag.index(np.amin(position_mag, axis = 0))
     max_position = position[max_index].in_units("Mpc")
     min_position = position[min_index].in_units("Mpc")
     clump_box = ds.box(min_position, max_position)
@@ -166,8 +166,8 @@ def Curv_Mean(clump):
     position = clump["all", "particle_position"]
     for x in position:
         position_mag.append(la.norm(x))
-    max_index = position_mag.index(max(position_mag))
-    min_index = position_mag.index(min(position_mag))
+    max_index = position_mag.index(np.amax(position_mag, axis = 0))
+    min_index = position_mag.index(np.amin(position_mag, axis = 0))
     max_position = position[max_index].in_units("Mpc")
     min_position = position[min_index].in_units("Mpc")
     clump_box = ds.box(min_position, max_position)
@@ -264,8 +264,8 @@ def M3(clump):
     position = clump["all", "particle_position"]
     for x in position:
         position_mag.append(la.norm(x))
-    max_index = position_mag.index(max(position_mag))
-    min_index = position_mag.index(min(position_mag))
+    max_index = position_mag.index(np.amax(position_mag, axis = 0))
+    min_index = position_mag.index(np.amin(position_mag, axis = 0))
     max_position = position[max_index].in_units("Mpc")
     min_position = position[min_index].in_units("Mpc")
     clump_box = ds.box(min_position, max_position)
@@ -315,8 +315,8 @@ def M4(clump):
     position = clump["all", "particle_position"]
     for x in position:
         position_mag.append(la.norm(x))
-    max_index = position_mag.index(max(position_mag))
-    min_index = position_mag.index(min(position_mag))
+    max_index = position_mag.index(np.amax(position_mag, axis = 0))
+    min_index = position_mag.index(np.amin(position_mag, axis = 0))
     max_position = position[max_index].in_units("Mpc")
     min_position = position[min_index].in_units("Mpc")
     clump_box = ds.box(min_position, max_position)
