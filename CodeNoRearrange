@@ -8,7 +8,6 @@ ds = yt.load("...")
 surface = ds.all_data()
 rho = surface.quantities["WeightedAverageQuantity"]("density",weight="ones")
 vertices = surface.extract_isocontours("density", rho, "triangles.obj", True)
-grid = ds.arbitrary_grid([0,0,0],[.2,.2,.2], dims=ds.domain_dimensions)
 master_clump = Clump(surface, ('gas', 'density'))
 grad_density = ds.add_gradient_fields(("gas", "density"))
 opacity_0 = 1
